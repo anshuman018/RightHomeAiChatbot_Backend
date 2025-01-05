@@ -38,47 +38,68 @@ def home():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    """Route to handle OpenAI API calls."""
+    """Route to handle OpenAI GPT responses with or without Kendra results."""
     data = request.json
     user_message = data.get("message")
-    
+
     if not user_message:
         return jsonify({"error": "Message is required"}), 400
 
     try:
+        # Query AWS Kendra for relevant property data
+        kendra_response = kendra_client.query(
+            IndexId=KENDRA_INDEX_ID,
+            QueryText=user_message
+        )
+
+        # Extract and format Kendra search results
+        search_results = [
+            {
+                "title": result.get("DocumentTitle", {}).get("Text", "No title available"),
+                "excerpt": result.get("DocumentExcerpt", {}).get("Text", "No description available"),
+                "url": result.get("DocumentURI", "No URL available")
+            }
+            for result in kendra_response.get("ResultItems", [])
+        ]
+
+        # Prepare context for OpenAI GPT
+        context = """
+        You are a helpful real estate chatbot working for RightHome AI, 
+        an AI-based property broker system. Your goal is to assist users in 
+        finding properties by providing accurate and real-time information. If 
+        a user says something meaningless or irrelevant, politely redirect the 
+        conversation back to meaningful topics, such as property searches or 
+        real estate advice.
+
+        Here are some property details from our database:
+        """
+        if search_results:
+            for idx, result in enumerate(search_results, 1):
+                context += f"\nMatch {idx}:\nTitle: {result['title']}\nExcerpt: {result['excerpt']}\n"
+        else:
+            context += """
+            While we couldn't find exact matches, here are some general property suggestions:
+            - Spacious 2BHK apartments in major cities.
+            - Affordable housing near educational institutions.
+            - Properties with amenities like swimming pools, gyms, and gardens.
+            """
+
+        # Generate response using OpenAI
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="ft:gpt-4o-2024-08-06:righthomeai:mark0:AkXjvguU",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "system", "content": context},
                 {"role": "user", "content": user_message}
             ]
         )
+
         reply = response.choices[0].message['content']
         return jsonify({"reply": reply})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
-
-@app.route('/kendra', methods=['POST'])
-def kendra_search():
-    """Route to query AWS Kendra."""
-    data = request.json
-    query = data.get("query")
-
-    if not query:
-        return jsonify({"error": "Query is required"}), 400
-
-    try:
-        response = kendra_client.query(
-            IndexId=KENDRA_INDEX_ID,
-            QueryText=query
-        )
-        results = [{"document_title": result["DocumentTitle"]["Text"],
-                    "document_excerpt": result["DocumentExcerpt"]["Text"],
-                    "document_url": result["DocumentURI"]}
-                   for result in response.get("ResultItems", [])]
-
-        return jsonify({"results": results})
+    except boto3.exceptions.Boto3Error as e:
+        return jsonify({"error": f"AWS Kendra error: {str(e)}"}), 500
+    except openai.error.OpenAIError as e:
+        return jsonify({"error": f"OpenAI API error: {str(e)}"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
