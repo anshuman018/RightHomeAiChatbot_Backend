@@ -29,6 +29,8 @@ session = boto3.Session(
 )
 kendra_client = session.client("kendra")
 
+# In-memory buffer for conversation history (temporary solution)
+conversation_memory = {}
 
 @app.route('/')
 def home():
@@ -41,9 +43,14 @@ def chat():
     """Route to handle user messages and provide responses."""
     data = request.json
     user_message = data.get("message")
+    session_id = data.get("session_id")  # Identify user session
 
-    if not user_message:
-        return jsonify({"error": "Message is required"}), 400
+    if not user_message or not session_id:
+        return jsonify({"error": "Message and session_id are required"}), 400
+
+    # Retrieve or initialize memory for the session
+    if session_id not in conversation_memory:
+        conversation_memory[session_id] = []
 
     try:
         # Query AWS Kendra for property data
@@ -62,15 +69,16 @@ def chat():
             for result in kendra_response.get("ResultItems", [])
         ]
 
-        # Prepare dynamic context for OpenAI
-        context = """
-        You are a professional real estate broker working for RightHome AI. 
-        Always assist users in finding properties by confidently providing property options 
-        and suggestions, even if exact matches aren't available.
+        # Prepare dynamic context from memory and search results
+        context = "You are a professional real estate broker working for RightHome AI. Assist users effectively.\n\n"
         
-        If specific matches are available, include them. Otherwise, suggest popular property options 
-        or general real estate advice that matches user interests. Always sound helpful and resourceful.
-        """
+        # Add previous conversations to the context
+        if conversation_memory[session_id]:
+            context += "Here is the conversation so far:\n"
+            for idx, entry in enumerate(conversation_memory[session_id], 1):
+                context += f"{idx}. User: {entry['user']}\n   Chatbot: {entry['bot']}\n"
+
+        # Add new context based on Kendra results
         if search_results:
             context += "\nHere are some properties that match the user's query:\n"
             for idx, result in enumerate(search_results, 1):
@@ -94,6 +102,14 @@ def chat():
         )
 
         reply = response.choices[0].message['content']
+
+        # Update memory with the latest exchange
+        conversation_memory[session_id].append({"user": user_message, "bot": reply})
+
+        # Limit memory to the last 10 exchanges per session (FIFO)
+        if len(conversation_memory[session_id]) > 10:
+            conversation_memory[session_id] = conversation_memory[session_id][-10:]
+
         return jsonify({"reply": reply})
 
     except boto3.exceptions.Boto3Error as e:
