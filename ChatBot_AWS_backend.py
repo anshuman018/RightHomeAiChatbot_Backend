@@ -38,7 +38,7 @@ def home():
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    """Route to handle OpenAI GPT responses with or without Kendra results."""
+    """Route to handle user messages and provide responses."""
     data = request.json
     user_message = data.get("message")
 
@@ -46,7 +46,7 @@ def chat():
         return jsonify({"error": "Message is required"}), 400
 
     try:
-        # Query AWS Kendra for relevant property data
+        # Query AWS Kendra for property data
         kendra_response = kendra_client.query(
             IndexId=KENDRA_INDEX_ID,
             QueryText=user_message
@@ -62,29 +62,29 @@ def chat():
             for result in kendra_response.get("ResultItems", [])
         ]
 
-        # Prepare context for OpenAI GPT
+        # Prepare dynamic context for OpenAI
         context = """
-        You are a helpful real estate chatbot working for RightHome AI, 
-        an AI-based property broker system. Your goal is to assist users in 
-        finding properties by providing accurate and real-time information. If 
-        a user says something meaningless or irrelevant, politely redirect the 
-        conversation back to meaningful topics, such as property searches or 
-        real estate advice.
-
-        Here are some property details from our database:
+        You are a professional real estate broker working for RightHome AI. 
+        Always assist users in finding properties by confidently providing property options 
+        and suggestions, even if exact matches aren't available.
+        
+        If specific matches are available, include them. Otherwise, suggest popular property options 
+        or general real estate advice that matches user interests. Always sound helpful and resourceful.
         """
         if search_results:
+            context += "\nHere are some properties that match the user's query:\n"
             for idx, result in enumerate(search_results, 1):
-                context += f"\nMatch {idx}:\nTitle: {result['title']}\nExcerpt: {result['excerpt']}\n"
+                context += f"Property {idx}: {result['title']}\nDetails: {result['excerpt']}\n"
         else:
             context += """
-            While we couldn't find exact matches, here are some general property suggestions:
-            - Spacious 2BHK apartments in major cities.
-            - Affordable housing near educational institutions.
-            - Properties with amenities like swimming pools, gyms, and gardens.
+            While we don't have exact matches in the database, here are some excellent property options:
+            - Spacious 2BHK apartments in city centers.
+            - Luxurious villas in gated communities with amenities like swimming pools and gyms.
+            - Affordable housing options near schools, colleges, and transport hubs.
+            - Commercial spaces ideal for offices or retail stores in prime locations.
             """
 
-        # Generate response using OpenAI
+        # Generate a response using OpenAI
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
