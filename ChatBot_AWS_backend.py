@@ -2,8 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import boto3
 import openai
-import os
 import logging
+import os
 
 # === Logging Setup ===
 logging.basicConfig(level=logging.INFO)
@@ -15,15 +15,12 @@ AWS_REGION = os.getenv("AWS_REGION")
 ROLE_ARN = os.getenv("ROLE_ARN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# === Validate Environment Variables ===
-if not all([KENDRA_INDEX_ID, AWS_REGION, ROLE_ARN, OPENAI_API_KEY]):
-    raise ValueError("One or more required environment variables are missing.")
+if not (KENDRA_INDEX_ID and AWS_REGION and ROLE_ARN and OPENAI_API_KEY):
+    logger.error("One or more environment variables are missing. Please check the setup.")
+    raise EnvironmentError("Environment variables not configured properly.")
 
 # === Initialize AWS Kendra Client ===
-kendra_client = boto3.client(
-    "kendra",
-    region_name=AWS_REGION,
-)
+kendra_client = boto3.client("kendra", region_name=AWS_REGION)
 
 # === Initialize OpenAI API Key ===
 openai.api_key = OPENAI_API_KEY
@@ -43,10 +40,10 @@ def kendra_search(query):
             QueryText=query,
             PageSize=3
         )
-        results = []
-        for item in response.get("ResultItems", []):
-            content = item.get("DocumentExcerpt", {}).get("Text", "")
-            results.append(content)
+        results = [
+            item.get("DocumentExcerpt", {}).get("Text", "")
+            for item in response.get("ResultItems", [])
+        ]
         return results
     except Exception as e:
         logger.error(f"Error querying Kendra: {e}")
@@ -118,4 +115,5 @@ def property_query():
 
 # === Main App Entry Point ===
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Default to port 5000 for local testing
+    app.run(host="0.0.0.0", port=port)
