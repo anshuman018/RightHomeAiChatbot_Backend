@@ -86,7 +86,7 @@ def chat():
 
         # Generate response using OpenAI
         response = openai.ChatCompletion.create(
-            model="ft:gpt-4o-2024-08-06:righthomeai:mark0:AkXjvguU",
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": context},
                 {"role": "user", "content": user_message}
