@@ -30,9 +30,15 @@ session = boto3.Session(
 kendra_client = session.client("kendra")
 
 
+@app.route('/')
+def home():
+    """Root route to confirm the API is live."""
+    return jsonify({"message": "Welcome to the RightHome AI Chatbot Backend!"})
+
+
 @app.route('/chat', methods=['POST'])
 def chat():
-    """Route to handle OpenAI API calls"""
+    """Route to handle OpenAI API calls."""
     data = request.json
     user_message = data.get("message")
     
@@ -55,7 +61,7 @@ def chat():
 
 @app.route('/kendra', methods=['POST'])
 def kendra_search():
-    """Route to query AWS Kendra"""
+    """Route to query AWS Kendra."""
     data = request.json
     query = data.get("query")
 
